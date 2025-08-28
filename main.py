@@ -82,11 +82,12 @@ st.markdown("""
 
     /* --- General Typography & Colors --- */
     h1, h2, h3, p, label, .stMarkdown { color: white !important; }
+    .stAlert { color: #31333F !important; }
 </style>
 """, unsafe_allow_html=True)
 
 
-# --- SETUP THE AI BRAIN & UTILITIES (No changes needed) ---
+# --- SETUP THE AI BRAIN & UTILITIES ---
 try:
     load_dotenv()
     genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -109,25 +110,33 @@ def get_text_from_url(url):
     except Exception as e:
         return f"Error fetching URL: {e}"
 
-def get_ai_analysis(prompt_content):
-    # Same as before
+# -----------------------------------------------------------------
+# --- THIS IS THE CORRECTED AI FUNCTION ---
+# -----------------------------------------------------------------
+def get_ai_analysis(text_prompt, image=None):
+    """
+    Analyzes content (text or text+image) using the Gemini model.
+    """
     prompt_template = f"""
-    As an expert misinformation analyst specializing in the Indian context, analyze the following content. If it's an image, describe it, extract any text, and then analyze. Your goal is to identify red flags and educate the user. Do not give a simple true/false verdict.
-    Content to analyze: --- {prompt_content if isinstance(prompt_content, str) else ""} ---
+    As an expert misinformation analyst specializing in the Indian context, analyze the provided content. If the content is an image, describe it, extract any text, and then analyze. Your goal is to identify red flags and educate the user. Do not give a simple true/false verdict.
+    Content to analyze: --- {text_prompt} ---
     Provide your analysis ONLY in a structured JSON format with keys: "credibility_score", "summary", "red_flags", "educational_insight". The "red_flags" key must be a list of JSON objects, where each object has a "flag_type" and a "description".
     """
     try:
-        if isinstance(prompt_content, str):
-            response = model.generate_content(prompt_template)
-        else:
-            response = model.generate_content(prompt_content)
+        # Combine the detailed prompt template with the image if it exists
+        request_content = [prompt_template, image] if image else [prompt_template]
+        
+        response = model.generate_content(request_content)
         json_text = response.text.strip().replace("```json", "").replace("```", "")
         return json.loads(json_text)
     except Exception as e:
-        return {"error": f"AI analysis failed. Details: {str(e)}"}
+        # This will now catch the JSON parsing error if the response is not valid JSON
+        return {"error": f"AI analysis failed. The model response was not valid JSON. Details: {str(e)}"}
+# -----------------------------------------------------------------
+# --- END OF CORRECTED FUNCTION ---
+# -----------------------------------------------------------------
 
 def create_gauge_chart(score):
-    # Same as before
     fig = go.Figure(go.Indicator(
         mode="gauge+number", value=score,
         domain={'x': [0, 1], 'y': [0, 1]},
@@ -145,7 +154,6 @@ def create_gauge_chart(score):
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", font={'color': "white"})
     return fig
 
-# --- THIS IS THE UPDATED DISPLAY FUNCTION ---
 def display_analysis_report(analysis_result):
     if "error" in analysis_result:
         st.error(f"⚠️ Analysis Error: {analysis_result['error']}", icon="🚫")
@@ -161,12 +169,9 @@ def display_analysis_report(analysis_result):
 
     with col2:
         st.subheader("Quick Summary")
-        # --- THIS IS THE NEW PART FOR THE TYPEWRITER EFFECT ---
         summary_text = analysis_result.get("summary", "No summary available.")
         st.markdown(f'<div class="typewriter-container">{summary_text}</div>', unsafe_allow_html=True)
-        # We add a dummy st.info to maintain the box style, but hide its content.
         st.info("", icon="ℹ️")
-
 
     st.subheader("🚨 Detected Red Flags")
     red_flags = analysis_result.get("red_flags", [])
@@ -185,9 +190,7 @@ def display_analysis_report(analysis_result):
         st.success(analysis_result.get("educational_insight", "No educational insight available."))
 
 
-# --- SIDEBAR & MAIN PAGE (No major changes needed) ---
-# (The rest of your Python code for the sidebar and tabs remains the same)
-
+# --- SIDEBAR & MAIN PAGE ---
 with st.sidebar:
     st.title("SatyaCheck AI 🧠")
     st.header("The Digital Truth Sentinel")
@@ -200,7 +203,6 @@ tab1, tab2, tab3 = st.tabs(["🔎 Analyze Text", "🔗 Analyze URL", "📸 Analy
 
 with tab1:
     st.header("Text Analysis Module")
-    # ... (rest of the tab1 code is the same)
     EXAMPLES = {
         "✨ Select a Pre-loaded Example": "",
         "💰 Lottery Scam Message": "CONGRATS! Your mobile number has won a ₹50,00,000 prize in the KBC Lottery! To claim, transfer ₹5,000 processing fee immediately to UPI ID: kbcwinner@bank. Limited time offer! Call +919876543210 for details. SHARE THIS WITH 5 GROUPS!",
@@ -216,10 +218,8 @@ with tab1:
         else:
             st.warning("Please provide text for analysis.")
 
-
 with tab2:
     st.header("URL Analysis Module")
-    # ... (rest of the tab2 code is the same)
     url_input = st.text_input("Enter webpage URL for deep content scan:", key="url_input")
     if st.button("Initiate URL Scan", use_container_width=True, key="url_btn"):
         if url_input:
@@ -233,15 +233,14 @@ with tab2:
         else:
             st.warning("Please provide a URL for analysis.")
 
-
 with tab3:
     st.header("Image Analysis Module")
-    # ... (rest of the tab3 code is the same)
     uploaded_image = st.file_uploader("Upload image for optical character and context recognition:", type=["jpg", "jpeg", "png"], key="img_uploader")
     if uploaded_image is not None:
         st.image(uploaded_image, caption="Image awaiting analysis", use_column_width=True)
         if st.button("Initiate Image Scan", use_container_width=True, key="img_btn"):
             with st.spinner("Processing visual data and extracting text..."):
                 image = Image.open(uploaded_image)
-                analysis = get_ai_analysis(["Analyze the text and context of this image:", image])
+                # --- THIS IS THE CORRECTED CALL FOR IMAGES ---
+                analysis = get_ai_analysis("Analyze the text and context in this image.", image=image)
                 display_analysis_report(analysis)
